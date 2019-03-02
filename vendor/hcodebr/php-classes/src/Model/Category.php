@@ -1,0 +1,23 @@
+<?php 
+
+namespace Hcode\Model;
+
+use \Hcode\DB\Sql;
+use \Hcode\Model;
+
+class Category extends Model {
+
+
+	public static function listAll()
+	{
+		$sql = new Sql();
+
+		$results = $sql->select("SELECT * FROM tb_categories ORDER BY descategory");
+
+		return $results;
+	}
+
+	
+}
+
+ ?>
