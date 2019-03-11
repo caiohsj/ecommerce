@@ -8,6 +8,7 @@ use \Hcode\Model\User;
 
 class Cart extends Model {
 	const SESSION = "Cart";
+	const SESSION_ERROR = "CartError";
 
 	public static function getFromSession()
 	{
@@ -95,6 +96,8 @@ class Cart extends Model {
 			':idcart'=>$this->getidcart(),
 			':idproduct'=>$product->getidproduct()
 		]);
+
+		$this->getCalculateTotal();
 	}
 
 	public function removeProduct(Product $product, $all = false)
@@ -111,6 +114,8 @@ class Cart extends Model {
 				':idproduct'=>$product->getidproduct()
 			]);
 		}
+
+		$this->getCalculateTotal();
 	}
 
 	public function getProducts()
@@ -130,6 +135,133 @@ class Cart extends Model {
 			]);
 
 		return Product::checkList($rows);
+	}
+
+	public function getProductsTotals()
+	{
+		$sql = new Sql();
+
+		$results = $sql->select("
+		SELECT 
+		SUM(vlprice) AS vltotalprice, 
+		SUM(vlwidth) AS vltotalwidth, 
+		SUM(vlheight) AS vltotalheight, 
+		SUM(vllength) AS vltotallength, 
+		SUM(vlweight) AS vltotalweight, 
+		COUNT(*) nrqtd
+		FROM tb_products a 
+		INNER JOIN tb_cartsproducts b 
+		ON a.idproduct = b.idproduct
+		WHERE b.idcart = :idcart 
+		AND b.dtremoved IS NULL", [
+			':idcart'=>$this->getidcart()
+		]);
+
+		if(count($results)){
+			return $results[0];
+		} else {
+			return [];
+		}
+	}
+
+	public function setFreight($nrzipcode)
+	{
+		$nrzipcode = str_replace('-', '', $nrzipcode);
+
+		$totals = $this->getProductsTotals();
+
+		if($totals['nrqtd'] > 0){
+			if ($totals['vltotalheight'] < 2) $totals['vltotalheight'] = 2;
+			if ($totals['vltotallength'] < 16) $totals['vltotallength'] = 16;
+
+			$qs = http_build_query([
+				'nCdEmpresa'=>'',
+				'sDsSenha'=>'',
+				'nCdServico'=>'41106',
+				'sCepOrigem'=>'09853120',
+				'sCepDestino'=>$nrzipcode,
+				'nVlPeso'=>$totals['vltotalweight'],
+				'nCdFormato'=>'1',
+				'nVlComprimento'=>$totals['vltotallength'],
+				'nVlAltura'=>$totals['vltotalheight'],
+				'nVlLargura'=>$totals['vltotalwidth'],
+				'nVlDiametro'=>'0',
+				'sCdMaoPropria'=>'N',
+				'nVlValorDeclarado'=>$totals['vltotalprice'],
+				'sCdAvisoRecebimento'=>'N'
+			]);
+
+			$xml = simplexml_load_file("http://ws.correios.com.br/calculador/CalcPrecoPrazo.asmx/CalcPrecoPrazo?".$qs);
+
+			$result = $xml->Servicos->cServico;
+
+			if ($result->MsgErro != ''){
+				Cart::setMsgError($result->MsgErro);
+			} else {
+				Cart::clearMsgError();
+			}
+
+			$this->setnrdays($result->PrazoEntrega);
+			$this->setvlfreight(Cart::formatValueToDecimal($result->Valor));
+			$this->setdeszipcode($nrzipcode);
+
+			$this->save();
+
+			return $result;
+		} else {
+
+		}
+	}
+
+	public static function formatValueToDecimal($value):float
+	{
+		$value = str_replace(',', '.', $value);
+
+		return $value;
+	}
+
+	public static function setMsgError($msg)
+	{
+		$_SESSION[Cart::SESSION_ERROR] = $msg;
+	}
+
+	public static function getMsgError()
+	{
+		$msg = (isset($_SESSION[Cart::SESSION_ERROR])) ? $_SESSION[Cart::SESSION_ERROR] : "";
+
+		Cart::clearMsgError();
+
+		return $msg;
+	}
+
+	public static function clearMsgError()
+	{
+		$_SESSION[Cart::SESSION_ERROR] = NULL;
+	}
+
+	public function updateFreight()
+	{
+		if ($this->getdeszipcode() != ''){
+			$this->setFreight($this->getdeszipcode());
+		}
+	}
+
+	public function getValues()
+	{
+		$this->getCalculateTotal();
+
+		return $this->getValues();
+	}
+
+	public function getCalculateTotal()
+	{
+		$this->updateFreight();
+		
+		$totals = $this->getProductsTotals();
+
+		$this->setvlsubtotal($totals['vltotalprice']);
+		$this->setvltotal($totals['vltotalprice']+ $this->getvlfreight());
+
 	}
 	
 }
