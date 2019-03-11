@@ -12,6 +12,34 @@ class User extends Model {
 	//Constante com nome da sessão
 	const SESSION = "User";
 
+	public static function getFromSession()
+	{
+		$user = new User();
+
+		if(isset($_SESSION[User::SESSION]) && (int)$_SESSION[User::SESSION]['iduser'] > 0){
+
+			$user->setData($_SESSION[User::SESSION]);
+		}
+
+		return $user;
+	}
+
+	public static function checkLogin($inadmin = true)
+	{
+		if(!isset($_SESSION[User::SESSION]) || !$_SESSION[User::SESSION] || !(int)$_SESSION[User::SESSION]["iduser"] > 0){
+			//Não está logado
+			return false;
+		} else {
+			if($inadmin === true && (bool)$_SESSION[User::SESSION]['inadmin'] > 0){
+				return true;
+			} else if($inadmin === false){
+				return true;
+			} else {
+				return false;
+			}
+		}
+	}
+
 	public static function login($login,$password)
 	{
 		$sql = new Sql();
@@ -53,10 +81,10 @@ class User extends Model {
 	}
 
 	//Método estático que verifica se o usuario está logado e se é um admin
-	public static function verifyLogin($inadmin = true)
+	public static function verifyLogin()
 	{
 		//Se não tem a variável de sessão ou se a variáve de sessão está vazia ou se o iduser da sessão não é maior que 0 ou se o campo inadmin for diferente de true
-		if(!isset($_SESSION[User::SESSION]) || !$_SESSION[User::SESSION] || !(int)$_SESSION[User::SESSION]["iduser"] > 0 || (bool)$_SESSION[User::SESSION]["inadmin"] !== $inadmin)
+		if(User::checkLogin($inadmin))
 		{
 			//Redireciona para a rota de login
 			header("Location: /admin/login");
